@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gasolina na regiao central sul de Brasilia</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='10' y='8' width='30' height='48' rx='5' fill='%23e8442e'/%3E%3Crect x='10' y='8' width='30' height='48' rx='5' fill='none' stroke='%23b32b18' stroke-width='2'/%3E%3Crect x='15' y='14' width='20' height='13' rx='2' fill='%23cfe8ff' stroke='%237aa7cc' stroke-width='1.5'/%3E%3Crect x='15' y='32' width='20' height='4' rx='2' fill='%23ffffff' opacity='.85'/%3E%3Crect x='15' y='39' width='20' height='4' rx='2' fill='%23ffffff' opacity='.85'/%3E%3Crect x='7' y='54' width='36' height='6' rx='2' fill='%236b7280'/%3E%3Cpath d='M44 20 h6 a4 4 0 0 1 4 4 v22 a3 3 0 0 1 -6 0 v-18 a2 2 0 0 0 -2 -2 h-2 z' fill='%23374151'/%3E%3Crect x='42' y='16' width='7' height='8' rx='2' fill='%23374151'/%3E%3C/svg%3E">
+<style>
+:root{
+  --fundo:#0b1020; --cartao:#131a2e; --cartao2:#1a2340; --borda:#26304f;
+  --texto:#e7ecf7; --apagado:#93a0bd; --led:#39d353; --ledfraco:#1c6b2e;
+  --ambar:#ffb020; --azul:#4ea1ff; --vermelho:#ff5d5d; --roxo:#b48cff;
+}
+*{box-sizing:border-box; margin:0; padding:0}
+body{background:var(--fundo); color:var(--texto);
+  font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  padding:18px 14px 40px}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.larg{max-width:1060px; margin:0 auto}
+h1{font-size:22px; font-weight:700; letter-spacing:.2px}
+h2{font-size:15px; font-weight:600; color:var(--apagado);
+  text-transform:uppercase; letter-spacing:.8px; margin:26px 0 10px}
+.sub{color:var(--apagado); font-size:13px; margin-top:4px}
+.cartoes{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
+  gap:12px; margin-top:16px}
+.cartao{background:var(--cartao); border:1px solid var(--borda);
+  border-radius:14px; padding:14px 16px}
+.cartao .rotulo{font-size:12px; color:var(--apagado); text-transform:uppercase;
+  letter-spacing:.6px}
+.cartao .valor{font-size:34px; font-weight:700; margin-top:2px}
+.cartao .led{color:var(--led); text-shadow:0 0 14px rgba(57,211,83,.35)}
+.cartao .ambarled{color:var(--ambar); text-shadow:0 0 14px rgba(255,176,32,.3)}
+.cartao .azulled{color:var(--azul); text-shadow:0 0 14px rgba(78,161,255,.3)}
+.cartao .quem{font-size:13px; margin-top:6px}
+.cartao .quando{font-size:12px; color:var(--apagado); margin-top:2px}
+.aviso{background:var(--cartao); border:1px solid var(--borda); border-left:4px solid var(--ambar);
+  border-radius:10px; padding:10px 14px; font-size:13px; color:var(--apagado); margin-top:14px}
+.aviso b{color:var(--texto)}
+.grafwrap{background:var(--cartao); border:1px solid var(--borda); border-radius:14px;
+  padding:14px; margin-top:10px; overflow-x:auto}
+.legenda{display:flex; flex-wrap:wrap; gap:14px; font-size:12.5px; color:var(--apagado);
+  margin:8px 4px 2px}
+.legenda span{display:inline-flex; align-items:center; gap:6px}
+.bolinha{width:10px; height:10px; border-radius:3px; display:inline-block}
+.controles{display:flex; flex-wrap:wrap; gap:8px; margin-top:14px}
+.controles select,.controles button{background:var(--cartao2); color:var(--texto);
+  border:1px solid var(--borda); border-radius:999px; padding:7px 14px; font-size:13.5px;
+  cursor:pointer; appearance:none}
+.controles button.ativo{background:var(--azul); border-color:var(--azul); color:#08111f;
+  font-weight:600}
+table{width:100%; border-collapse:collapse; margin-top:10px; font-size:14px}
+th{color:var(--apagado); font-weight:600; font-size:12px; text-transform:uppercase;
+  letter-spacing:.5px; text-align:left; padding:8px 10px; border-bottom:1px solid var(--borda);
+  white-space:nowrap}
+td{padding:9px 10px; border-bottom:1px solid rgba(38,48,79,.55); vertical-align:top}
+tr:hover td{background:rgba(78,161,255,.05)}
+.tabwrap{background:var(--cartao); border:1px solid var(--borda); border-radius:14px;
+  padding:6px 10px 10px; margin-top:10px; overflow-x:auto}
+.preco{font-weight:700; font-size:15.5px}
+.pverde{color:var(--led)} .pambar{color:var(--ambar)}
+.velho{color:var(--apagado); font-weight:400}
+.etiq{display:inline-block; font-size:10.5px; padding:1px 8px; border-radius:999px;
+  border:1px solid var(--borda); color:var(--apagado); margin-left:6px; white-space:nowrap}
+.etiq.fresca{border-color:rgba(57,211,83,.5); color:var(--led)}
+.nomeposto{font-weight:600}
+.detposto{font-size:12px; color:var(--apagado)}
+.melhor td{background:rgba(57,211,83,.07)}
+.compo{display:flex; height:34px; border-radius:9px; overflow:hidden; margin-top:10px;
+  border:1px solid var(--borda)}
+.compo div{display:flex; align-items:center; justify-content:center; font-size:12px;
+  font-weight:600; white-space:nowrap; overflow:hidden}
+.notas{font-size:13px; color:var(--apagado); margin-top:10px; line-height:1.65}
+.notas b{color:var(--texto)}
+.notas ul{margin:6px 0 0 18px}
+.rodape{margin-top:30px; font-size:12px; color:var(--apagado); border-top:1px solid var(--borda);
+  padding-top:12px}
+a{color:var(--azul)}
+@media(max-width:640px){ .cartao .valor{font-size:28px} h1{font-size:19px} }
+</style>
+</head>
+<body>
+<div class="larg">
+
+<h1>Gasolina na regiao central sul de Brasilia</h1>
+<div class="sub" id="subtitulo"></div>
+
+<div class="cartoes" id="cartoes"></div>
+
+<div class="aviso" id="avisopodium"></div>
+
+<h2>Serie de precos na regiao</h2>
+<div class="legenda">
+  <span><i class="bolinha" style="background:var(--led)"></i>gasolina comum, media semanal</span>
+  <span><i class="bolinha" style="background:rgba(57,211,83,.25)"></i>faixa minimo a maximo da comum</span>
+  <span><i class="bolinha" style="background:var(--ambar)"></i>aditivada, media semanal</span>
+  <span><i class="bolinha" style="background:var(--azul)"></i>parcela Petrobras na refinaria (DF)</span>
+</div>
+<div class="grafwrap"><div id="grafico"></div></div>
+
+<h2>Postos da regiao</h2>
+<div class="controles">
+  <button id="botcomum" class="ativo">Ordenar pela comum</button>
+  <button id="botadit">Ordenar pela aditivada</button>
+  <select id="selbairro"><option value="">Todos os bairros</option></select>
+</div>
+<div class="tabwrap">
+  <table>
+    <thead><tr>
+      <th>Posto</th><th>Bairro</th><th>Bandeira</th>
+      <th>Comum</th><th>Aditivada</th><th>Ultima pesquisa</th>
+    </tr></thead>
+    <tbody id="corpotabela"></tbody>
+  </table>
+</div>
+<div class="notas" id="notatabela"></div>
+
+<h2>Quanto do preco da bomba e refinaria</h2>
+<div class="grafwrap">
+  <div id="compotexto" style="font-size:13.5px; color:var(--apagado)"></div>
+  <div class="compo" id="compobarra"></div>
+</div>
+
+<h2>Metodologia</h2>
+<div class="notas">
+  <b>Fontes.</b> Precos por posto vem do Levantamento de Precos de Combustiveis da
+  <a href="https://www.gov.br/anp/pt-br/assuntos/precos-e-defesa-da-concorrencia/precos/levantamento-de-precos-de-combustiveis-ultimas-semanas-pesquisadas" target="_blank" rel="noopener">ANP</a>,
+  pesquisa semanal publicada as segundas, complementada pela serie historica semestral da propria ANP.
+  A parcela de refinaria vem da pagina de
+  <a href="https://precos.petrobras.com.br/web/precos-dos-combustiveis/w/gasolina/df" target="_blank" rel="noopener">precos da Petrobras</a> para o DF.
+  <ul>
+    <li><b>A amostra da ANP e rotativa:</b> nem todo posto e pesquisado toda semana.
+      Postos sem leitura na semana vigente aparecem com a data da ultima leitura.</li>
+    <li><b>Gasolina Podium nao aparece separada:</b> a ANP registra apenas
+      "gasolina aditivada", que agrega todas as aditivadas. A Podium costuma custar
+      acima da aditivada comum da mesma bandeira; use a coluna aditivada como piso.</li>
+    <li><b>Menor Preco Brasil foi testado e descartado</b> em 06/08/2026: o servico
+      por NFC-e so existe como aplicativo, sem endpoint web publico, e a versao atual
+      exige login gov.br. Se um dia abrir uma consulta web, entra como fonte.</li>
+    <li><b>Regiao coberta:</b> Asa Sul, Sudoeste, Octogonal, Cruzeiro, Vila Planalto,
+      Guara I e II, SIA, SIG, Zona Industrial do Guara, Setores Complementares,
+      Nucleo Bandeirante, Candangolandia, Park Way e Lago Sul (SHIS). Jardim Botanico
+      e Altiplano Leste estao no recorte, mas a ANP ainda nao pesquisou posto por la.</li>
+  </ul>
+</div>
+
+<div class="rodape" id="rodape"></div>
+</div>
+
+<script>
+const H = /*__DADOS__*/{};
+const MEU_STAMP = (H.ultima || "").trim();
+const FMT = new Intl.NumberFormat("pt-BR", {minimumFractionDigits:2, maximumFractionDigits:2});
+const S = { ordem: "c", bairro: "" };
+
+function real(v){ return "R$ " + FMT.format(v); }
+function dataBr(iso){ const [a,m,d] = iso.split("-"); return `${d}/${m}/${a}`; }
+function el(id){ return document.getElementById(id); }
+
+/* Semana ANP: domingo a sabado. Chave = domingo que abre a semana. */
+function chaveSemana(iso){
+  const d = new Date(iso + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() - d.getUTCDay());
+  return d.toISOString().slice(0,10);
+}
+
+/* Agregados semanais por produto e visao por posto. */
+function prepara(){
+  const semanas = {};
+  const porPosto = {};
+  for(const [cnpj, prod, data, preco] of H.coletas){
+    const ch = chaveSemana(data);
+    (semanas[ch] = semanas[ch] || {c:[], a:[]})[prod].push(preco);
+    const pp = (porPosto[cnpj] = porPosto[cnpj] || {c:null, a:null});
+    if(!pp[prod] || data > pp[prod].data) pp[prod] = {data, preco};
+  }
+  const chaves = Object.keys(semanas).sort();
+  const serie = chaves.map(ch => {
+    const s = semanas[ch];
+    const ag = p => p.length ? {
+      min: Math.min(...p), max: Math.max(...p),
+      med: p.reduce((x,y)=>x+y,0)/p.length, n: p.length } : null;
+    return { ch, c: ag(s.c), a: ag(s.a) };
+  });
+  const vigente = chaves.filter(ch => semanas[ch].c.length || semanas[ch].a.length).pop();
+  return { serie, porPosto, vigente };
+}
+
+const P = prepara();
+
+function cartoes(){
+  const vig = [];
+  for(const [cnpj, prod, data, preco] of H.coletas)
+    if(chaveSemana(data) === P.vigente) vig.push({cnpj, prod, data, preco});
+  const comuns = vig.filter(v => v.prod === "c").sort((x,y) => x.preco - y.preco);
+  const adits  = vig.filter(v => v.prod === "a").sort((x,y) => x.preco - y.preco);
+  const petro = H.petrobras.length ? H.petrobras[H.petrobras.length-1] : null;
+  const cx = el("cartoes");
+  cx.innerHTML = "";
+
+  function cartao(rotulo, classe, valor, quem, quando){
+    const c = document.createElement("div");
+    c.className = "cartao";
+    c.innerHTML = `<div class="rotulo">${rotulo}</div>
+      <div class="valor mono ${classe}">${valor}</div>
+      <div class="quem">${quem}</div><div class="quando">${quando}</div>`;
+    cx.appendChild(c);
+  }
+
+  if(comuns.length){
+    const m = comuns[0], p = H.postos[m.cnpj] || {};
+    const media = comuns.reduce((x,y)=>x+y.preco,0)/comuns.length;
+    cartao("Menor preco da comum", "led", real(m.preco),
+      `${p.nome || "posto sem nome na ANP"} (${p.bairro || "?"})`,
+      `pesquisa de ${dataBr(m.data)}, ${comuns.length} leituras na semana`);
+    cartao("Media da comum na regiao", "led", real(media),
+      `de ${real(comuns[0].preco)} a ${real(comuns[comuns.length-1].preco)}`,
+      "semana vigente da ANP");
+  }
+  if(adits.length){
+    const m = adits[0], p = H.postos[m.cnpj] || {};
+    cartao("Menor preco da aditivada", "ambarled", real(m.preco),
+      `${p.nome || "posto sem nome na ANP"} (${p.bairro || "?"})`,
+      `pesquisa de ${dataBr(m.data)}; Podium tende a custar mais`);
+  }
+  if(petro)
+    cartao("Parcela Petrobras (refinaria)", "azulled", real(petro[1]),
+      "por litro de gasolina A no DF",
+      `lida em ${dataBr(petro[0])} no site da Petrobras`);
+
+  el("subtitulo").textContent =
+    `Gasolina comum e aditivada, posto a posto, na pesquisa semanal da ANP. ` +
+    `Semana vigente: ${dataBr(P.vigente)} em diante.`;
+  el("avisopodium").innerHTML =
+    `<b>Sobre a Podium:</b> a ANP publica a aditivada de forma agregada, sem separar ` +
+    `a Podium das demais. Nao existe hoje fonte publica com o preco da Podium posto a ` +
+    `posto (o Menor Preco Brasil exige aplicativo com login gov.br). A coluna aditivada ` +
+    `e o melhor termometro disponivel: quando ela sobe, a Podium acompanha.`;
+}
+
+function grafico(){
+  const serie = P.serie.filter(s => s.c || s.a);
+  if(!serie.length) return;
+  const W = Math.max(720, Math.min(1020, serie.length * 9)), Ht = 380;
+  const mE = 46, mD = 14, mT = 14, mB = 34;
+  const t0 = new Date(serie[0].ch), t1 = new Date(serie[serie.length-1].ch);
+  const petro = H.petrobras.map(p => [new Date(p[0]), p[1]]);
+  let vmin = Infinity, vmax = -Infinity;
+  for(const s of serie){
+    for(const k of ["c","a"]) if(s[k]){ vmin = Math.min(vmin, s[k].min); vmax = Math.max(vmax, s[k].max); }
+  }
+  for(const [,v] of petro){ vmin = Math.min(vmin, v); }
+  vmin = Math.floor((vmin - .15) * 2) / 2; vmax = Math.ceil((vmax + .15) * 2) / 2;
+  const X = t => mE + (t - t0) / (t1 - t0 || 1) * (W - mE - mD);
+  const Y = v => mT + (vmax - v) / (vmax - vmin) * (Ht - mT - mB);
+
+  let g = `<svg viewBox="0 0 ${W} ${Ht}" width="${W}" style="display:block">`;
+  const passo = (vmax - vmin) > 4 ? 1 : .5;
+  vmin = Math.floor(vmin / passo) * passo;
+  for(let v = vmin; v <= vmax + .001; v += passo){
+    g += `<line x1="${mE}" y1="${Y(v)}" x2="${W-mD}" y2="${Y(v)}" stroke="#26304f" stroke-width="1"/>` +
+         `<text x="${mE-6}" y="${Y(v)+4}" fill="#93a0bd" font-size="11" text-anchor="end">${FMT.format(v)}</text>`;
+  }
+  for(let m = new Date(Date.UTC(t0.getUTCFullYear(), t0.getUTCMonth()+1, 1)); m < t1;
+      m = new Date(Date.UTC(m.getUTCFullYear(), m.getUTCMonth()+3, 1))){
+    const jan = m.getUTCMonth() === 0;
+    const rot = jan ? String(m.getUTCFullYear())
+      : String(m.getUTCMonth()+1).padStart(2,"0") + "/" + String(m.getUTCFullYear()).slice(2);
+    g += `<text x="${X(m)}" y="${Ht-10}" fill="${jan ? "#93a0bd" : "#5d6a8c"}"` +
+         ` font-size="${jan ? 11 : 10}" text-anchor="middle"${jan ? ' font-weight="600"' : ""}>${rot}</text>` +
+         `<line x1="${X(m)}" y1="${mT}" x2="${X(m)}" y2="${Ht-mB}" stroke="#1b2440" stroke-width="1"/>`;
+  }
+
+  /* Faixa min-max da comum: um caminho por trecho continuo (a serie tem buracos). */
+  function trechos(prod){
+    const ts = []; let atual = [];
+    for(const s of serie){
+      if(s[prod]) atual.push(s);
+      else if(atual.length){ ts.push(atual); atual = []; }
+    }
+    if(atual.length) ts.push(atual);
+    return ts;
+  }
+  for(const tr of trechos("c")){
+    if(tr.length < 2) continue;
+    let cima = tr.map(s => `${X(new Date(s.ch))},${Y(s.c.max)}`).join(" ");
+    let baixo = tr.slice().reverse().map(s => `${X(new Date(s.ch))},${Y(s.c.min)}`).join(" ");
+    g += `<polygon points="${cima} ${baixo}" fill="rgba(57,211,83,.13)"/>`;
+  }
+  function linha(prod, cor, tracejada){
+    for(const tr of trechos(prod)){
+      const pts = tr.map(s => `${X(new Date(s.ch))},${Y(s[prod].med)}`).join(" ");
+      g += `<polyline points="${pts}" fill="none" stroke="${cor}" stroke-width="2"` +
+           (tracejada ? ` stroke-dasharray="5 4"` : "") + ` stroke-linejoin="round"/>`;
+      if(tr.length === 1){
+        const s = tr[0];
+        g += `<circle cx="${X(new Date(s.ch))}" cy="${Y(s[prod].med)}" r="2.5" fill="${cor}"/>`;
+      }
+    }
+  }
+  linha("c", "#39d353", false);
+  linha("a", "#ffb020", true);
+  if(petro.length){
+    const pts = petro.map(([t,v]) => `${X(t)},${Y(v)}`).join(" ");
+    g += petro.length > 1
+      ? `<polyline points="${pts}" fill="none" stroke="#4ea1ff" stroke-width="2"/>`
+      : `<circle cx="${X(petro[0][0])}" cy="${Y(petro[0][1])}" r="3.5" fill="#4ea1ff"/>`;
+  }
+  const ult = serie[serie.length-1];
+  if(ult.c) g += `<text x="${W-mD}" y="${Y(ult.c.med)-8}" fill="#39d353" font-size="12" text-anchor="end" font-weight="600">${real(ult.c.med)}</text>`;
+  g += `</svg>`;
+  el("grafico").innerHTML = g;
+}
+
+function tabela(){
+  const linhas = [];
+  const bairros = new Set();
+  for(const cnpj in P.porPosto){
+    const p = H.postos[cnpj] || {};
+    bairros.add(p.bairro || "?");
+    linhas.push({cnpj, p, u: P.porPosto[cnpj]});
+  }
+  const sel = el("selbairro");
+  if(sel.options.length === 1)
+    [...bairros].sort().forEach(b => sel.add(new Option(b, b)));
+
+  const chave = S.ordem;
+  const filtradas = linhas.filter(l => !S.bairro || (l.p.bairro || "?") === S.bairro);
+  /* Postos pesquisados na semana vigente vem primeiro, do mais barato ao
+     mais caro; leituras antigas vao para baixo, das mais recentes as mais
+     velhas. Sem isso um preco de 2023 vence a manchete por ser menor. */
+  filtradas.sort((x,y) => {
+    const vx = x.u[chave], vy = y.u[chave];
+    const fx = vx && chaveSemana(vx.data) === P.vigente;
+    const fy = vy && chaveSemana(vy.data) === P.vigente;
+    if(fx !== fy) return fx ? -1 : 1;
+    if(fx && fy) return vx.preco - vy.preco;
+    if(vx && vy) return vy.data > vx.data ? 1 : (vy.data < vx.data ? -1 : vx.preco - vy.preco);
+    return (vx ? 0 : 1) - (vy ? 0 : 1);
+  });
+
+  function celula(u, classe){
+    if(!u) return `<td><span class="velho">sem leitura</span></td>`;
+    const fresca = chaveSemana(u.data) === P.vigente;
+    return `<td><span class="preco mono ${fresca ? classe : "velho"}">${real(u.preco)}</span>` +
+           (fresca ? `` : ` <span class="etiq">${dataBr(u.data)}</span>`) + `</td>`;
+  }
+  const corpo = filtradas.map((l, i) => {
+    const fresca = ["c","a"].some(k => l.u[k] && chaveSemana(l.u[k].data) === P.vigente);
+    const dU = ["c","a"].map(k => l.u[k] && l.u[k].data).filter(Boolean).sort().pop();
+    const melhor = i === 0 && l.u[chave] && chaveSemana(l.u[chave].data) === P.vigente;
+    return `<tr class="${melhor ? "melhor" : ""}">
+      <td><div class="nomeposto">${l.p.nome || "sem nome na ANP"}</div>
+          <div class="detposto">${l.p.endereco || ""}</div></td>
+      <td>${l.p.bairro || "?"}</td>
+      <td>${l.p.bandeira || "?"}</td>
+      ${celula(l.u.c, "pverde")}${celula(l.u.a, "pambar")}
+      <td>${dU ? dataBr(dU) : ""} <span class="etiq ${fresca ? "fresca" : ""}">${fresca ? "semana vigente" : "leitura antiga"}</span></td>
+    </tr>`;
+  }).join("");
+  el("corpotabela").innerHTML = corpo ||
+    `<tr><td colspan="6" style="color:var(--apagado)">Nenhum posto no filtro.</td></tr>`;
+  el("notatabela").innerHTML =
+    `${filtradas.length} postos ja pesquisados pela ANP na regiao desde 2023. ` +
+    `Preco cinza com data e a ultima leitura de um posto fora da amostra da semana.`;
+}
+
+function composicao(){
+  const vig = H.coletas.filter(c => c[1] === "c" && chaveSemana(c[2]) === P.vigente);
+  const petro = H.petrobras.length ? H.petrobras[H.petrobras.length-1][1] : null;
+  if(!vig.length || !petro) return;
+  const media = vig.reduce((x,c)=>x+c[3],0)/vig.length;
+  const parte = Math.min(97, petro / media * 100);
+  el("compotexto").innerHTML =
+    `Da media vigente de <b class="mono">${real(media)}</b> na bomba, ` +
+    `<b class="mono">${real(petro)}</b> (${parte.toFixed(0)}%) e a parcela da Petrobras na ` +
+    `refinaria. O resto e imposto, etanol anidro da mistura, distribuicao e revenda.`;
+  el("compobarra").innerHTML =
+    `<div style="width:${parte}%; background:rgba(78,161,255,.75); color:#08111f">Petrobras ${parte.toFixed(0)}%</div>` +
+    `<div style="flex:1; background:var(--cartao2); color:var(--apagado)">impostos, etanol, distribuicao e revenda</div>`;
+}
+
+function rodape(){
+  el("rodape").textContent =
+    `Ultima coleta: ${MEU_STAMP.replace("T"," ").replace("+00:00"," UTC")}. ` +
+    `Conferencia horaria na ANP e na Petrobras; a pesquisa da ANP e semanal. ` +
+    `Painel gerado automaticamente; nao e recomendacao de compra.`;
+}
+
+el("botcomum").onclick = () => { S.ordem = "c"; troca(); };
+el("botadit").onclick = () => { S.ordem = "a"; troca(); };
+el("selbairro").onchange = e => { S.bairro = e.target.value; tabela(); };
+function troca(){
+  el("botcomum").classList.toggle("ativo", S.ordem === "c");
+  el("botadit").classList.toggle("ativo", S.ordem === "a");
+  tabela();
+}
+
+/* Auto-atualizacao pelo stamp, igual ao painel de precos: so recarrega
+   quando ha coleta nova publicada, com a aba visivel. */
+async function checaAtualizacao(){
+  if(document.hidden) return;
+  try{
+    const r = await fetch("stamp.txt?t=" + Date.now(), {cache:"no-store"});
+    if(!r.ok) return;
+    const stamp = (await r.text()).trim();
+    if(stamp && MEU_STAMP && stamp !== MEU_STAMP) location.reload();
+  }catch(e){}
+}
+setInterval(checaAtualizacao, 5 * 60 * 1000);
+document.addEventListener("visibilitychange", checaAtualizacao);
+
+cartoes(); grafico(); tabela(); composicao(); rodape();
+</script>
+</body>
+</html>

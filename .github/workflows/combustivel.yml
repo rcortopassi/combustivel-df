@@ -1,0 +1,63 @@
+name: combustivel
+
+# Seis chances por hora, porque o cron do GitHub descarta a maioria dos
+# horarios nesta conta (medido no painel de passagens em 05/08/2026). O
+# combustivel/recente.py impede que as chances extras virem seis rodadas por
+# hora: se o historico publicado tiver menos de 45 min, a rodada termina em
+# segundos, sem nem instalar dependencias. Na pratica sai uma conferencia por
+# hora na ANP e na Petrobras, que e o que o painel precisa: a pesquisa da ANP
+# e semanal (sai as segundas) e a parcela Petrobras muda raramente.
+# Em repositorio PUBLICO os minutos de Actions nao consomem os 2.000 min/mes
+# da conta; e por isso que o repositorio e publico. Antes de investigar
+# coleta sumida, conferir `gh run list` para ver se o run chegou a existir.
+
+on:
+  schedule:
+    - cron: "5,15,25,35,45,55 * * * *"
+  workflow_dispatch:
+    inputs:
+      forcar:
+        description: "Coletar mesmo se o painel estiver fresco"
+        type: boolean
+        default: true
+
+concurrency:
+  group: combustivel        # duas rodadas juntas corrompem o historico
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  coleta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: O painel publicado ja esta fresco?
+        id: fresco
+        if: inputs.forcar != true
+        env:
+          PA_USER: ${{ secrets.PA_USER }}
+        run: python3 combustivel/recente.py
+      - if: steps.fresco.outputs.fresco != '1'
+        run: pip install -r requirements.txt
+      - name: Coletar e publicar
+        if: steps.fresco.outputs.fresco != '1'
+        env:
+          PA_TOKEN: ${{ secrets.PA_TOKEN }}
+          PA_USER: ${{ secrets.PA_USER }}
+          COMBUSTIVEL_DATACENTER: "1"
+        run: python3 combustivel/atualiza.py 2>&1 | tee saida.txt
+      - name: Guardar o historico
+        if: always() && steps.fresco.outputs.fresco != '1'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add combustivel/historico.json
+          git diff --staged --quiet || git commit -m "coleta de $(date -u '+%F %H:%M')"
+          git pull --rebase --autostash || true
+          git push || echo "push falhou; a proxima rodada tenta de novo"
