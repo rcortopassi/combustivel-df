@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Gasolina na regiao central sul de Brasilia</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='10' y='8' width='30' height='48' rx='5' fill='%23e8442e'/%3E%3Crect x='10' y='8' width='30' height='48' rx='5' fill='none' stroke='%23b32b18' stroke-width='2'/%3E%3Crect x='15' y='14' width='20' height='13' rx='2' fill='%23cfe8ff' stroke='%237aa7cc' stroke-width='1.5'/%3E%3Crect x='15' y='32' width='20' height='4' rx='2' fill='%23ffffff' opacity='.85'/%3E%3Crect x='15' y='39' width='20' height='4' rx='2' fill='%23ffffff' opacity='.85'/%3E%3Crect x='7' y='54' width='36' height='6' rx='2' fill='%236b7280'/%3E%3Cpath d='M44 20 h6 a4 4 0 0 1 4 4 v22 a3 3 0 0 1 -6 0 v-18 a2 2 0 0 0 -2 -2 h-2 z' fill='%23374151'/%3E%3Crect x='42' y='16' width='7' height='8' rx='2' fill='%23374151'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 :root{
   --fundo:#0b1020; --cartao:#131a2e; --cartao2:#1a2340; --borda:#26304f;
@@ -75,6 +77,20 @@ tr:hover td{background:rgba(78,161,255,.05)}
 .rodape{margin-top:30px; font-size:12px; color:var(--apagado); border-top:1px solid var(--borda);
   padding-top:12px}
 a{color:var(--azul)}
+#mapa{height:480px; border-radius:10px; background:var(--cartao2)}
+.pino{background:var(--led); color:#04170a; font-weight:700;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px;
+  padding:2px 8px; border-radius:999px; border:2px solid #0b1020; white-space:nowrap;
+  box-shadow:0 1px 6px rgba(0,0,0,.55); display:inline-block}
+.pino.ambar{background:var(--ambar); color:#211200}
+.pino.velhopino{background:#3a4462; color:#c6cede; font-weight:600}
+.pino.aprox{border-style:dashed; border-color:#8fa0c8}
+.pino.melhorpino{box-shadow:0 0 0 4px rgba(57,211,83,.45), 0 1px 6px rgba(0,0,0,.55)}
+.leaflet-popup-content-wrapper{background:var(--cartao); color:var(--texto);
+  border:1px solid var(--borda); border-radius:10px; font:13px/1.5 -apple-system,sans-serif}
+.leaflet-popup-tip{background:var(--cartao)}
+.leaflet-container a.leaflet-popup-close-button{color:var(--apagado)}
+.leaflet-container{font:12px/1.4 -apple-system,sans-serif}
 @media(max-width:640px){ .cartao .valor{font-size:28px} h1{font-size:19px} }
 </style>
 </head>
@@ -96,6 +112,15 @@ a{color:var(--azul)}
   <span><i class="bolinha" style="background:var(--azul)"></i>parcela Petrobras na refinaria (DF)</span>
 </div>
 <div class="grafwrap"><div id="grafico"></div></div>
+
+<h2>Mapa dos postos</h2>
+<div class="legenda">
+  <span><i class="bolinha" style="background:var(--led)"></i>preco da semana vigente</span>
+  <span><i class="bolinha" style="background:#3a4462"></i>ultima leitura antiga</span>
+  <span><i class="bolinha" style="background:var(--cartao2); border:1.5px dashed #8fa0c8"></i>posicao aproximada pelo bairro</span>
+</div>
+<div class="grafwrap" style="padding:8px"><div id="mapa"></div></div>
+<div class="notas" id="notamapa"></div>
 
 <h2>Postos da regiao</h2>
 <div class="controles">
@@ -364,6 +389,85 @@ function tabela(){
     `Preco cinza com data e a ultima leitura de um posto fora da amostra da semana.`;
 }
 
+let MAPA = null, CAMADA = null;
+function mapa(){
+  const div = el("mapa");
+  if(typeof L === "undefined"){
+    div.innerHTML = '<div style="padding:24px; color:var(--apagado)">O mapa nao ' +
+      'carregou (a biblioteca externa foi bloqueada). A tabela abaixo tem os mesmos dados.</div>';
+    return;
+  }
+  if(!MAPA){
+    /* setView de largada: sem vista definida o Leaflet nem baixa os tiles,
+       e um dia sem marcador deixaria o mapa cego. */
+    MAPA = L.map(div, {scrollWheelZoom:false}).setView([-15.83, -47.92], 12);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+      {maxZoom:18, attribution:"&copy; OpenStreetMap"}).addTo(MAPA);
+    /* O Leaflet mede o contêiner uma vez; se a pagina ainda esta assentando
+       (fontes, layout), os tiles saem pela metade. Remedir depois resolve. */
+    setTimeout(() => MAPA.invalidateSize(), 400);
+    window.addEventListener("resize", () => MAPA.invalidateSize());
+  }
+  if(CAMADA) CAMADA.remove();
+  CAMADA = L.layerGroup().addTo(MAPA);
+  const chave = S.ordem;
+
+  /* Pinos no mesmo centroide de bairro se esconderiam; um deslocamento
+     deterministico pequeno abre o leque. */
+  const usados = {};
+  function espalha(lat, lng){
+    const k = lat.toFixed(5) + "," + lng.toFixed(5);
+    const i = usados[k] = (usados[k] || 0) + 1;
+    if(i === 1) return [lat, lng];
+    const ang = i * 2.4, r = .0022 * Math.ceil((i - 1) / 6);
+    return [lat + r * Math.sin(ang), lng + r * 1.15 * Math.cos(ang)];
+  }
+
+  let melhor = null;
+  for(const cnpj in P.porPosto){
+    const v = P.porPosto[cnpj][chave], p = H.postos[cnpj] || {};
+    if(!v || p.lat == null) continue;
+    if(chaveSemana(v.data) === P.vigente && (!melhor || v.preco < melhor.preco))
+      melhor = {cnpj, preco: v.preco};
+  }
+  const pts = [];
+  let plotados = 0, aprox = 0;
+  for(const cnpj in P.porPosto){
+    const p = H.postos[cnpj] || {}, u = P.porPosto[cnpj], v = u[chave];
+    if(!v || p.lat == null) continue;
+    const fresca = chaveSemana(v.data) === P.vigente;
+    if(p.geo === "bairro") aprox++;
+    const cls = "pino" + (fresca ? (chave === "a" ? " ambar" : "") : " velhopino") +
+      (p.geo === "bairro" ? " aprox" : "") +
+      (melhor && melhor.cnpj === cnpj ? " melhorpino" : "");
+    const [lat, lng] = espalha(p.lat, p.lng);
+    const icone = L.divIcon({className:"", iconSize:null, iconAnchor:[24,13],
+      html:`<div class="${cls}">${FMT.format(v.preco)}</div>`});
+    const linhaProd = (rot, x, cor) => x
+      ? `<br>${rot}: <b style="color:${cor}" class="mono">${real(x.preco)}</b> ` +
+        `<span style="color:var(--apagado)">(${dataBr(x.data)})</span>`
+      : "";
+    L.marker([lat, lng], {icon: icone}).addTo(CAMADA).bindPopup(
+      `<b>${p.nome || "sem nome na ANP"}</b><br>` +
+      `<span style="color:var(--apagado)">${p.endereco || ""} ${p.bairro || ""}` +
+      ` &middot; ${p.bandeira || ""}</span>` +
+      linhaProd("Comum", u.c, "var(--led)") +
+      linhaProd("Aditivada", u.a, "var(--ambar)") +
+      (fresca ? "" : `<br><span style="color:var(--apagado)">fora da amostra da semana vigente</span>`) +
+      (p.geo === "bairro" ? `<br><span style="color:var(--apagado)">posicao aproximada pelo bairro</span>` : ""));
+    pts.push([lat, lng]);
+    plotados++;
+  }
+  if(pts.length && !MAPA._ajustado){
+    MAPA.fitBounds(pts, {padding:[36,36]});
+    MAPA._ajustado = true;
+  }
+  el("notamapa").innerHTML =
+    `${plotados} postos no mapa com a ${chave === "c" ? "gasolina comum" : "aditivada"}. ` +
+    `Coordenadas pelo CEP do posto; ${aprox} sem CEP na base da ANP estao no centro ` +
+    `do proprio bairro, com borda tracejada. O pino com aro verde e o menor preco vigente.`;
+}
+
 function composicao(){
   const vig = H.coletas.filter(c => c[1] === "c" && chaveSemana(c[2]) === P.vigente);
   const petro = H.petrobras.length ? H.petrobras[H.petrobras.length-1][1] : null;
@@ -392,7 +496,7 @@ el("selbairro").onchange = e => { S.bairro = e.target.value; tabela(); };
 function troca(){
   el("botcomum").classList.toggle("ativo", S.ordem === "c");
   el("botadit").classList.toggle("ativo", S.ordem === "a");
-  tabela();
+  tabela(); mapa();
 }
 
 /* Auto-atualizacao pelo stamp, igual ao painel de precos: so recarrega
@@ -409,7 +513,7 @@ async function checaAtualizacao(){
 setInterval(checaAtualizacao, 5 * 60 * 1000);
 document.addEventListener("visibilitychange", checaAtualizacao);
 
-cartoes(); grafico(); tabela(); composicao(); rodape();
+cartoes(); grafico(); mapa(); tabela(); composicao(); rodape();
 </script>
 </body>
 </html>

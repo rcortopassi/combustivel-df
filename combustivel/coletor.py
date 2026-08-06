@@ -164,7 +164,12 @@ def _funde(a, b):
     for fonte in (a, b):
         if not isinstance(fonte, dict):
             continue
-        h["postos"].update(fonte.get("postos") or {})
+        # Fusao campo a campo: um lado pode ter enriquecido o cadastro (cep,
+        # lat/lng da geocodificacao) que o outro ainda nao tem. Substituir o
+        # dicionario inteiro ja apagou coordenadas uma vez; nunca de novo.
+        for cnpj, posto in (fonte.get("postos") or {}).items():
+            alvo = h["postos"].setdefault(cnpj, {})
+            alvo.update({k: v for k, v in posto.items() if v is not None})
         h["semanas"] = sorted(set(h["semanas"]) | set(fonte.get("semanas") or []))
         h["semanas_ruins"] = sorted(set(h["semanas_ruins"])
                                     | set(fonte.get("semanas_ruins") or []))
@@ -187,7 +192,8 @@ def _funde(a, b):
     return h
 
 
-def registra(h, cnpj, nome, endereco, bairro, bandeira, produto, data_iso, preco):
+def registra(h, cnpj, nome, endereco, bairro, bandeira, produto, data_iso, preco,
+             cep=None):
     if not cnpj or produto not in PRODUTOS:
         return 0
     if not (PRECO_MIN <= preco <= PRECO_MAX):
@@ -205,6 +211,9 @@ def registra(h, cnpj, nome, endereco, bairro, bandeira, produto, data_iso, preco
         p["bairro"] = normaliza(bairro)
     if bandeira:
         p["bandeira"] = normaliza(bandeira)
+    cep_dig = re.sub(r"\D", "", str(cep or ""))
+    if len(cep_dig) == 8:
+        p.setdefault("cep", cep_dig)
     c = [cnpj, PRODUTOS[produto], data_iso, round(float(preco), 3)]
     if c not in h["coletas"]:
         h["coletas"].append(c)
@@ -271,7 +280,8 @@ def _processa_xlsx(h, corpo):
             continue
         endereco = " ".join(str(x) for x in (row[3], row[4]) if x)
         n += registra(h, limpa_cnpj(row[0]), row[2] or row[1], endereco,
-                      row[6], row[10], normaliza(row[11]), data_iso, preco)
+                      row[6], row[10], normaliza(row[11]), data_iso, preco,
+                      cep=row[7])
     return n
 
 
@@ -306,11 +316,96 @@ def anp_semente(h):
                     continue
                 endereco = " ".join(x.strip() for x in (row[5], row[6]) if x.strip())
                 n += registra(h, limpa_cnpj(row[4]), row[3], endereco,
-                              row[8], row[15], produto, data_iso, preco)
+                              row[8], row[15], produto, data_iso, preco,
+                              cep=row[9])
         h["sementes"].append(rotulo)
         total += n
         print(f"  Semente {rotulo}: {n} coletas da regiao")
     return total
+
+
+# Centroides aproximados por bairro, reserva para posto sem CEP geocodificavel.
+# O pino ganha a etiqueta de posicao aproximada no mapa.
+BAIRRO_CENTRO = {
+    "ASA SUL": (-15.8146, -47.9033),
+    "SETOR SUDOESTE": (-15.7952, -47.9265), "SUDOESTE": (-15.7952, -47.9265),
+    "OCTOGONAL": (-15.8046, -47.9330),
+    "CRUZEIRO": (-15.7906, -47.9370), "CRUZEIRO VELHO": (-15.7925, -47.9330),
+    "CRUZEIRO NOVO": (-15.7860, -47.9435),
+    "VILA PLANALTO": (-15.7838, -47.8600),
+    "GUARA": (-15.8270, -47.9750), "GUARA I": (-15.8200, -47.9700),
+    "GUARA II": (-15.8340, -47.9780),
+    "ZONA INDUSTRIAL (GUARA)": (-15.8110, -47.9600),
+    "SIA": (-15.8000, -47.9540), "SIG": (-15.7980, -47.9380),
+    "SETORES COMPLEMENTARES": (-15.8030, -47.9470),
+    "N BANDEIRANTE": (-15.8710, -47.9660), "NUCLEO BANDEIRANTE": (-15.8710, -47.9660),
+    "CANDANGOLANDIA": (-15.8530, -47.9550),
+    "PARK WAY": (-15.8900, -47.9600),
+    "LAGO SUL": (-15.8320, -47.8700),
+    "SETOR DE HABITACOES INDIVIDUAIS SUL": (-15.8320, -47.8700),
+    "JARDIM BOTANICO": (-15.8720, -47.8000),
+    "ALTIPLANO LESTE": (-15.8000, -47.8200),
+}
+# Caixa de sanidade do DF: coordenada fora dela e CEP errado na base de
+# geocodificacao, e o posto cai para o centroide do bairro.
+DF_LAT = (-16.12, -15.40)
+DF_LNG = (-48.35, -47.25)
+
+
+def _geo_brasilapi(cep):
+    with urlopen(Request(f"https://brasilapi.com.br/api/cep/v2/{cep}",
+                         headers={"User-Agent": UA}), timeout=15) as r:
+        j = json.load(r)
+    c = (j.get("location") or {}).get("coordinates") or {}
+    if c.get("latitude") and c.get("longitude"):
+        return float(c["latitude"]), float(c["longitude"])
+    return None
+
+
+def _geo_awesome(cep):
+    with urlopen(Request(f"https://cep.awesomeapi.com.br/json/{cep}",
+                         headers={"User-Agent": UA}), timeout=15) as r:
+        j = json.load(r)
+    if j.get("lat") and j.get("lng"):
+        return float(j["lat"]), float(j["lng"])
+    return None
+
+
+def geocodifica(h, limite=30):
+    """Da lat/lng a cada posto, uma vez so (fica gravado no historico).
+    Por CEP via BrasilAPI e AwesomeAPI (nesta ordem: a Awesome recusa IP de
+    datacenter estrangeiro, licao do cambio do painel de precos); sem CEP ou
+    sem acerto, centroide do bairro com geo="bairro". Posto marcado como
+    "bairro" que ganhar CEP depois tenta de novo a via precisa."""
+    pendentes = [(c, p) for c, p in h["postos"].items()
+                 if p.get("lat") is None
+                 or (p.get("geo") == "bairro" and p.get("cep"))]
+    feitos = 0
+    for cnpj, p in pendentes[:limite]:
+        lat = lng = None
+        origem = None
+        if p.get("cep"):
+            for fn in (_geo_brasilapi, _geo_awesome):
+                try:
+                    r = fn(p["cep"])
+                except Exception:
+                    r = None
+                if r and DF_LAT[0] <= r[0] <= DF_LAT[1] and DF_LNG[0] <= r[1] <= DF_LNG[1]:
+                    lat, lng = r
+                    origem = "cep"
+                    break
+                time.sleep(0.3)
+        if lat is None:
+            if p.get("geo") == "bairro":
+                continue  # ja esta no centroide e o CEP nao destravou
+            c = BAIRRO_CENTRO.get(p.get("bairro") or "")
+            if not c:
+                continue
+            lat, lng = c
+            origem = "bairro"
+        p["lat"], p["lng"], p["geo"] = round(lat, 6), round(lng, 6), origem
+        feitos += 1
+    return feitos, len(pendentes)
 
 
 def petrobras(h):
@@ -363,6 +458,13 @@ def main():
     if fontes_ok == 0:
         print("NADA COLETADO: todas as fontes falharam; historico intocado.")
         return 1
+
+    try:
+        feitos, pend = geocodifica(h)
+        if pend:
+            print(f"  Geocodificacao: {feitos} de {pend} postos pendentes resolvidos")
+    except Exception as e:
+        print(f"  Geocodificacao FALHOU ({e}); o mapa segue com o que ja tem")
 
     h["ultima"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     HIST.write_text(json.dumps(h, ensure_ascii=False, separators=(",", ":")),
