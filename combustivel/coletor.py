@@ -30,6 +30,7 @@ import io
 import json
 import os
 import re
+import socket
 import ssl
 import sys
 import time
@@ -38,6 +39,18 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.request import Request, urlopen
+
+# O runner do GitHub nao roteia IPv6 e o gov.br anuncia AAAA: a primeira
+# rodada no Actions morreu com "Network is unreachable" na ANP enquanto a
+# Petrobras passava. Forcar IPv4 resolve e nao muda nada no Mac.
+_getaddrinfo = socket.getaddrinfo
+
+
+def _so_ipv4(host, port, family=0, *args, **kw):
+    return _getaddrinfo(host, port, socket.AF_INET, *args, **kw)
+
+
+socket.getaddrinfo = _so_ipv4
 
 BASE = Path(__file__).parent
 HIST = BASE / "historico.json"
