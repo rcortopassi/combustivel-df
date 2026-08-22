@@ -91,7 +91,29 @@ a{color:var(--azul)}
 .leaflet-popup-tip{background:var(--cartao)}
 .leaflet-container a.leaflet-popup-close-button{color:var(--apagado)}
 .leaflet-container{font:12px/1.4 -apple-system,sans-serif}
-@media(max-width:640px){ .cartao .valor{font-size:28px} h1{font-size:19px} }
+.controles input[type=text]{background:var(--cartao2); color:var(--texto);
+  border:1px solid var(--borda); border-radius:999px; padding:7px 14px; font-size:13.5px;
+  min-width:220px; flex:1; outline:none}
+.controles input[type=text]:focus{border-color:var(--azul)}
+.controles label{display:inline-flex; align-items:center; gap:6px; font-size:13px;
+  color:var(--apagado); padding:6px 4px; cursor:pointer; user-select:none}
+.controles button:disabled{opacity:.45; cursor:default}
+.pontinho{width:10px; height:10px; border-radius:50%; background:#3a4462;
+  border:1.5px solid #7f8bab; box-shadow:0 1px 4px rgba(0,0,0,.5)}
+.bolha{background:var(--cartao2); color:#c6cede; border:1.5px dashed #8fa0c8;
+  border-radius:999px; padding:2px 9px; font-size:11.5px; white-space:nowrap;
+  display:inline-block; box-shadow:0 1px 6px rgba(0,0,0,.5)}
+.ponto{width:16px; height:16px; border-radius:50%; background:var(--azul); border:2px solid #fff;
+  box-shadow:0 0 0 5px rgba(78,161,255,.3)}
+.gradbar{width:64px; height:10px; border-radius:3px; display:inline-block;
+  background:linear-gradient(90deg,hsl(130 70% 52%),hsl(60 80% 52%),hsl(0 75% 58%))}
+.var{font-size:11.5px; margin-left:5px; font-weight:600; white-space:nowrap}
+.var.sobe{color:var(--vermelho)} .var.cai{color:var(--led)} .var.igual{color:var(--apagado)}
+.dist{white-space:nowrap; color:var(--apagado)}
+tr.clicavel{cursor:pointer}
+tr.destaque td{background:rgba(78,161,255,.16)}
+.dica{font-size:12px; color:var(--apagado); margin:6px 4px 0}
+@media(max-width:640px){ .cartao .valor{font-size:28px} h1{font-size:19px} #mapa{height:380px} }
 </style>
 </head>
 <body>
@@ -114,25 +136,39 @@ a{color:var(--azul)}
 <div class="grafwrap"><div id="grafico"></div></div>
 
 <h2>Mapa dos postos</h2>
+<div class="controles">
+  <button id="botgeo">Usar minha localizacao</button>
+  <button id="botlimpa" disabled>Limpar ponto</button>
+  <label><input type="checkbox" id="chkantigas"> mostrar postos sem leitura na semana</label>
+</div>
 <div class="legenda">
-  <span><i class="bolinha" style="background:var(--led)"></i>preco da semana vigente</span>
-  <span><i class="bolinha" style="background:#3a4462"></i>ultima leitura antiga</span>
-  <span><i class="bolinha" style="background:var(--cartao2); border:1.5px dashed #8fa0c8"></i>posicao aproximada pelo bairro</span>
+  <span><i class="gradbar"></i>preco da semana vigente, do mais barato ao mais caro</span>
+  <span><i class="bolinha" style="background:#3a4462; border-radius:50%; border:1.5px solid #7f8bab"></i>sem leitura na semana (ultima leitura no balao)</span>
+  <span><i class="bolinha" style="background:var(--cartao2); border:1.5px dashed #8fa0c8"></i>postos sem endereco preciso, agrupados por bairro</span>
+  <span><i class="bolinha" style="background:var(--azul); border-radius:50%"></i>seu ponto de referencia</span>
 </div>
 <div class="grafwrap" style="padding:8px"><div id="mapa"></div></div>
+<div class="dica">Clique no mapa para marcar um ponto de referencia (casa, escritorio): a tabela
+  passa a mostrar a distancia de cada posto e pode ser ordenada por ela. Clique numa linha da
+  tabela para localizar o posto no mapa.</div>
 <div class="notas" id="notamapa"></div>
 
 <h2>Postos da regiao</h2>
 <div class="controles">
+  <input type="text" id="busca" placeholder="Buscar posto, endereco, bandeira ou bairro" autocomplete="off">
+  <select id="selbairro"><option value="">Todos os bairros</option></select>
+</div>
+<div class="controles" style="margin-top:8px">
   <button id="botcomum" class="ativo">Ordenar pela comum</button>
   <button id="botadit">Ordenar pela aditivada</button>
-  <select id="selbairro"><option value="">Todos os bairros</option></select>
+  <button id="botdist" disabled>Ordenar pela distancia</button>
+  <label><input type="checkbox" id="chkvigente" checked> so postos com preco na semana vigente</label>
 </div>
 <div class="tabwrap">
   <table>
     <thead><tr>
       <th>Posto</th><th>Bairro</th><th>Bandeira</th>
-      <th>Comum</th><th>Aditivada</th><th>Ultima pesquisa</th>
+      <th>Comum</th><th>Aditivada</th><th>Ultima pesquisa</th><th id="thdist" style="display:none">Distancia</th>
     </tr></thead>
     <tbody id="corpotabela"></tbody>
   </table>
@@ -153,8 +189,17 @@ a{color:var(--azul)}
   A parcela de refinaria vem da pagina de
   <a href="https://precos.petrobras.com.br/web/precos-dos-combustiveis/w/gasolina/df" target="_blank" rel="noopener">precos da Petrobras</a> para o DF.
   <ul>
-    <li><b>A amostra da ANP e rotativa:</b> nem todo posto e pesquisado toda semana.
-      Postos sem leitura na semana vigente aparecem com a data da ultima leitura.</li>
+    <li><b>A amostra da ANP e pequena e rotativa:</b> na regiao, cerca de 9 a 10 postos
+      por semana, quase sempre os mesmos. Os demais postos ja pesquisados ficam
+      fora da amostra por meses ou anos; por isso o painel mostra por padrao so quem
+      tem preco na semana vigente, e uma leitura com mais de 60 dias nunca aparece
+      como preco, so como data da ultima pesquisa.</li>
+    <li><b>Variacao:</b> a seta ao lado do preco compara com a leitura anterior do
+      mesmo posto na ANP, que pode ser da semana passada ou de meses atras; a data
+      da leitura anterior aparece ao passar o mouse.</li>
+    <li><b>Posicao no mapa:</b> pelo CEP do posto quando a ANP informa; sem CEP, pela
+      quadra do endereco no OpenStreetMap; sem quadra reconhecida, o posto entra num
+      balao tracejado no centro do bairro, junto com os outros na mesma situacao.</li>
     <li><b>Gasolina Podium nao aparece separada:</b> a ANP registra apenas
       "gasolina aditivada", que agrega todas as aditivadas. A Podium costuma custar
       acima da aditivada comum da mesma bandeira; use a coluna aditivada como piso.</li>
@@ -175,7 +220,30 @@ a{color:var(--azul)}
 const H = /*__DADOS__*/{};
 const MEU_STAMP = (H.ultima || "").trim();
 const FMT = new Intl.NumberFormat("pt-BR", {minimumFractionDigits:2, maximumFractionDigits:2});
-const S = { ordem: "c", bairro: "" };
+const S = { ordem: "c", bairro: "", busca: "", soVigente: true, antigas: false, ponto: null };
+const DIAS_RECENTE = 60;
+
+function semAcento(t){
+  return String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+}
+function diasDesde(iso){
+  return Math.round((Date.now() - new Date(iso + "T12:00:00Z").getTime()) / 86400000);
+}
+function kmEntre(a, b){
+  const R = 6371, r = Math.PI / 180;
+  const dLat = (b[0] - a[0]) * r, dLng = (b[1] - a[1]) * r;
+  const x = Math.sin(dLat/2)**2 + Math.cos(a[0]*r) * Math.cos(b[0]*r) * Math.sin(dLng/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+function fmtKm(km){ return km < 10 ? km.toFixed(1).replace(".", ",") + " km" : Math.round(km) + " km"; }
+/* Cor do pino pela posicao do preco entre o menor e o maior da semana:
+   verde no piso, amarelo no meio, vermelho no teto. Faixa estreita fica
+   toda verde, para nao pintar de vermelho uma diferenca de 3 centavos. */
+function corPreco(v, lo, hi){
+  if(hi - lo < 0.06) return "hsl(130 70% 52%)";
+  const t = Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
+  return `hsl(${Math.round(130 - 130 * t)} 75% 54%)`;
+}
 
 function real(v){ return "R$ " + FMT.format(v); }
 function dataBr(iso){ const [a,m,d] = iso.split("-"); return `${d}/${m}/${a}`; }
@@ -195,8 +263,21 @@ function prepara(){
   for(const [cnpj, prod, data, preco] of H.coletas){
     const ch = chaveSemana(data);
     (semanas[ch] = semanas[ch] || {c:[], a:[]})[prod].push(preco);
-    const pp = (porPosto[cnpj] = porPosto[cnpj] || {c:null, a:null});
-    if(!pp[prod] || data > pp[prod].data) pp[prod] = {data, preco};
+    const pp = (porPosto[cnpj] = porPosto[cnpj] || {c:null, a:null, hist:{c:[], a:[]}});
+    pp.hist[prod].push({data, preco});
+  }
+  /* Ultima leitura de cada produto por posto, e a anterior de semana
+     diferente, para a seta de variacao. */
+  for(const cnpj in porPosto){
+    const pp = porPosto[cnpj];
+    for(const prod of ["c","a"]){
+      const hs = pp.hist[prod].sort((x,y) => x.data < y.data ? 1 : -1);
+      if(!hs.length) continue;
+      const u = hs[0], semU = chaveSemana(u.data);
+      const ant = hs.find(x => chaveSemana(x.data) !== semU) || null;
+      pp[prod] = {data: u.data, preco: u.preco, ant};
+    }
+    delete pp.hist;
   }
   const chaves = Object.keys(semanas).sort();
   const serie = chaves.map(ch => {
@@ -336,24 +417,36 @@ function grafico(){
   el("grafico").innerHTML = g;
 }
 
-function tabela(){
+function linhasTabela(){
   const linhas = [];
-  const bairros = new Set();
   for(const cnpj in P.porPosto){
     const p = H.postos[cnpj] || {};
-    bairros.add(p.bairro || "?");
-    linhas.push({cnpj, p, u: P.porPosto[cnpj]});
+    const u = P.porPosto[cnpj];
+    const fresca = ["c","a"].some(k => u[k] && chaveSemana(u[k].data) === P.vigente);
+    const dist = (S.ponto && p.lat != null) ? kmEntre(S.ponto, [p.lat, p.lng]) : null;
+    linhas.push({cnpj, p, u, fresca, dist,
+      texto: semAcento([p.nome, p.endereco, p.bandeira, p.bairro].join(" "))});
   }
-  const sel = el("selbairro");
-  if(sel.options.length === 1)
-    [...bairros].sort().forEach(b => sel.add(new Option(b, b)));
+  return linhas;
+}
 
+function filtra(linhas){
+  const q = semAcento(S.busca).trim().split(/\s+/).filter(Boolean);
+  return linhas.filter(l =>
+    (!S.bairro || (l.p.bairro || "?") === S.bairro) &&
+    (!S.soVigente || l.fresca) &&
+    q.every(t => l.texto.includes(t)));
+}
+
+function ordena(linhas){
   const chave = S.ordem;
-  const filtradas = linhas.filter(l => !S.bairro || (l.p.bairro || "?") === S.bairro);
+  if(chave === "d" && S.ponto){
+    return linhas.sort((x,y) => (x.dist ?? 1e9) - (y.dist ?? 1e9));
+  }
   /* Postos pesquisados na semana vigente vem primeiro, do mais barato ao
      mais caro; leituras antigas vao para baixo, das mais recentes as mais
      velhas. Sem isso um preco de 2023 vence a manchete por ser menor. */
-  filtradas.sort((x,y) => {
+  return linhas.sort((x,y) => {
     const vx = x.u[chave], vy = y.u[chave];
     const fx = vx && chaveSemana(vx.data) === P.vigente;
     const fy = vy && chaveSemana(vy.data) === P.vigente;
@@ -362,34 +455,71 @@ function tabela(){
     if(vx && vy) return vy.data > vx.data ? 1 : (vy.data < vx.data ? -1 : vx.preco - vy.preco);
     return (vx ? 0 : 1) - (vy ? 0 : 1);
   });
+}
+
+function variacao(u){
+  if(!u || !u.ant) return "";
+  const d = u.preco - u.ant.preco;
+  const cls = Math.abs(d) < 0.005 ? "igual" : (d > 0 ? "sobe" : "cai");
+  const txt = cls === "igual" ? "=" : (d > 0 ? "+" : "-") + FMT.format(Math.abs(d));
+  return `<span class="var ${cls}" title="leitura anterior: ${real(u.ant.preco)} em ${dataBr(u.ant.data)}">${txt}</span>`;
+}
+
+function tabela(){
+  const todas = linhasTabela();
+  const sel = el("selbairro");
+  if(sel.options.length === 1)
+    [...new Set(todas.map(l => l.p.bairro || "?"))].sort().forEach(b => sel.add(new Option(b, b)));
+
+  const chave = S.ordem === "d" ? "c" : S.ordem;
+  const filtradas = ordena(filtra(todas));
+  const comPonto = !!S.ponto;
+  el("thdist").style.display = comPonto ? "" : "none";
 
   function celula(u, classe){
     if(!u) return `<td><span class="velho">sem leitura</span></td>`;
-    const fresca = chaveSemana(u.data) === P.vigente;
-    return `<td><span class="preco mono ${fresca ? classe : "velho"}">${real(u.preco)}</span>` +
-           (fresca ? `` : ` <span class="etiq">${dataBr(u.data)}</span>`) + `</td>`;
+    if(chaveSemana(u.data) === P.vigente)
+      return `<td><span class="preco mono ${classe}">${real(u.preco)}</span>${variacao(u)}</td>`;
+    if(diasDesde(u.data) > DIAS_RECENTE)
+      return `<td><span class="velho">sem leitura recente</span> ` +
+             `<span class="etiq" title="ultima leitura: ${real(u.preco)}">${u.data.slice(5,7)}/${u.data.slice(0,4)}</span></td>`;
+    return `<td><span class="preco mono velho">${real(u.preco)}</span> <span class="etiq">${dataBr(u.data)}</span></td>`;
   }
-  const corpo = filtradas.map((l, i) => {
-    const fresca = ["c","a"].some(k => l.u[k] && chaveSemana(l.u[k].data) === P.vigente);
+  let melhorCnpj = null;
+  for(const l of filtradas){
+    const v = l.u[chave];
+    if(v && chaveSemana(v.data) === P.vigente && (melhorCnpj === null || v.preco < P.porPosto[melhorCnpj][chave].preco))
+      melhorCnpj = l.cnpj;
+  }
+  const corpo = filtradas.map(l => {
     const dU = ["c","a"].map(k => l.u[k] && l.u[k].data).filter(Boolean).sort().pop();
-    const melhor = i === 0 && l.u[chave] && chaveSemana(l.u[chave].data) === P.vigente;
-    return `<tr class="${melhor ? "melhor" : ""}">
+    const melhor = l.cnpj === melhorCnpj;
+    return `<tr class="clicavel ${melhor ? "melhor" : ""} ${S.foco === l.cnpj ? "destaque" : ""}" data-cnpj="${l.cnpj}">
       <td><div class="nomeposto">${l.p.nome || "sem nome na ANP"}</div>
           <div class="detposto">${l.p.endereco || ""}</div></td>
       <td>${l.p.bairro || "?"}</td>
       <td>${l.p.bandeira || "?"}</td>
       ${celula(l.u.c, "pverde")}${celula(l.u.a, "pambar")}
-      <td>${dU ? dataBr(dU) : ""} <span class="etiq ${fresca ? "fresca" : ""}">${fresca ? "semana vigente" : "leitura antiga"}</span></td>
+      <td>${dU ? dataBr(dU) : ""} <span class="etiq ${l.fresca ? "fresca" : ""}">${l.fresca ? "semana vigente" : "fora da amostra"}</span></td>
+      ${comPonto ? `<td class="dist mono">${l.dist != null ? fmtKm(l.dist) : ""}</td>` : ""}
     </tr>`;
   }).join("");
   el("corpotabela").innerHTML = corpo ||
-    `<tr><td colspan="6" style="color:var(--apagado)">Nenhum posto no filtro.</td></tr>`;
+    `<tr><td colspan="7" style="color:var(--apagado)">Nenhum posto no filtro.` +
+    (S.soVigente ? ` Desmarque "so postos com preco na semana vigente" para ver os demais.` : ``) + `</td></tr>`;
+  el("corpotabela").querySelectorAll("tr[data-cnpj]").forEach(tr =>
+    tr.onclick = () => focaPosto(tr.dataset.cnpj, true));
+  const nFrescas = todas.filter(l => l.fresca).length;
   el("notatabela").innerHTML =
-    `${filtradas.length} postos ja pesquisados pela ANP na regiao desde 2023. ` +
-    `Preco cinza com data e a ultima leitura de um posto fora da amostra da semana.`;
+    `${filtradas.length} ${filtradas.length === 1 ? "posto" : "postos"} no filtro. ` +
+    `Na semana vigente a ANP pesquisou ${nFrescas} postos da regiao; ` +
+    `${todas.length} ja apareceram na amostra desde 2023. ` +
+    `Leitura com mais de ${DIAS_RECENTE} dias nao e mostrada como preco.`;
 }
 
-let MAPA = null, CAMADA = null;
+let MAPA = null, CAMADA = null, MARCADORES = {}, PONTO = null;
+const BAIRRO_CENTRO = {};
+
 function mapa(){
   const div = el("mapa");
   if(typeof L === "undefined"){
@@ -407,65 +537,143 @@ function mapa(){
        (fontes, layout), os tiles saem pela metade. Remedir depois resolve. */
     setTimeout(() => MAPA.invalidateSize(), 400);
     window.addEventListener("resize", () => MAPA.invalidateSize());
+    MAPA.on("click", e => defineponto([e.latlng.lat, e.latlng.lng]));
   }
   if(CAMADA) CAMADA.remove();
   CAMADA = L.layerGroup().addTo(MAPA);
-  const chave = S.ordem;
+  MARCADORES = {};
+  const chave = S.ordem === "d" ? "c" : S.ordem;
+  const rotProd = chave === "c" ? "gasolina comum" : "aditivada";
 
-  /* Pinos no mesmo centroide de bairro se esconderiam; um deslocamento
-     deterministico pequeno abre o leque. */
-  const usados = {};
-  function espalha(lat, lng){
-    const k = lat.toFixed(5) + "," + lng.toFixed(5);
-    const i = usados[k] = (usados[k] || 0) + 1;
-    if(i === 1) return [lat, lng];
-    const ang = i * 2.4, r = .0022 * Math.ceil((i - 1) / 6);
-    return [lat + r * Math.sin(ang), lng + r * 1.15 * Math.cos(ang)];
-  }
+  const linhaProd = (rot, x, cor) => x
+    ? `<br>${rot}: <b style="color:${cor}" class="mono">${real(x.preco)}</b> ` +
+      `<span style="color:var(--apagado)">(${dataBr(x.data)})</span>`
+    : "";
+  const popup = (p, u, extra) =>
+    `<b>${p.nome || "sem nome na ANP"}</b><br>` +
+    `<span style="color:var(--apagado)">${p.endereco || ""} ${p.bairro || ""}` +
+    ` &middot; ${p.bandeira || ""}</span>` +
+    linhaProd("Comum", u.c, "var(--led)") + linhaProd("Aditivada", u.a, "var(--ambar)") +
+    (extra || "");
 
-  let melhor = null;
+  /* Frescos: pino com preco, cor pela faixa. */
+  const frescos = [];
   for(const cnpj in P.porPosto){
     const v = P.porPosto[cnpj][chave], p = H.postos[cnpj] || {};
-    if(!v || p.lat == null) continue;
-    if(chaveSemana(v.data) === P.vigente && (!melhor || v.preco < melhor.preco))
-      melhor = {cnpj, preco: v.preco};
+    if(v && p.lat != null && chaveSemana(v.data) === P.vigente) frescos.push({cnpj, p, v});
   }
+  const precos = frescos.map(f => f.v.preco);
+  const lo = Math.min(...precos), hi = Math.max(...precos);
+  let melhor = null;
+  for(const f of frescos) if(!melhor || f.v.preco < melhor.v.preco) melhor = f;
   const pts = [];
-  let plotados = 0, aprox = 0;
-  for(const cnpj in P.porPosto){
-    const p = H.postos[cnpj] || {}, u = P.porPosto[cnpj], v = u[chave];
-    if(!v || p.lat == null) continue;
-    const fresca = chaveSemana(v.data) === P.vigente;
-    if(p.geo === "bairro") aprox++;
-    const cls = "pino" + (fresca ? (chave === "a" ? " ambar" : "") : " velhopino") +
-      (p.geo === "bairro" ? " aprox" : "") +
-      (melhor && melhor.cnpj === cnpj ? " melhorpino" : "");
-    const [lat, lng] = espalha(p.lat, p.lng);
+  for(const f of frescos){
+    const cor = corPreco(f.v.preco, lo, hi);
+    const cls = "pino" + (f.p.geo === "bairro" ? " aprox" : "") + (melhor === f ? " melhorpino" : "");
     const icone = L.divIcon({className:"", iconSize:null, iconAnchor:[24,13],
-      html:`<div class="${cls}">${FMT.format(v.preco)}</div>`});
-    const linhaProd = (rot, x, cor) => x
-      ? `<br>${rot}: <b style="color:${cor}" class="mono">${real(x.preco)}</b> ` +
-        `<span style="color:var(--apagado)">(${dataBr(x.data)})</span>`
-      : "";
-    L.marker([lat, lng], {icon: icone}).addTo(CAMADA).bindPopup(
-      `<b>${p.nome || "sem nome na ANP"}</b><br>` +
-      `<span style="color:var(--apagado)">${p.endereco || ""} ${p.bairro || ""}` +
-      ` &middot; ${p.bandeira || ""}</span>` +
-      linhaProd("Comum", u.c, "var(--led)") +
-      linhaProd("Aditivada", u.a, "var(--ambar)") +
-      (fresca ? "" : `<br><span style="color:var(--apagado)">fora da amostra da semana vigente</span>`) +
-      (p.geo === "bairro" ? `<br><span style="color:var(--apagado)">posicao aproximada pelo bairro</span>` : ""));
-    pts.push([lat, lng]);
-    plotados++;
+      html:`<div class="${cls}" style="background:${cor}">${FMT.format(f.v.preco)}</div>`});
+    const m = L.marker([f.p.lat, f.p.lng], {icon: icone, zIndexOffset: melhor === f ? 500 : 100})
+      .addTo(CAMADA).bindPopup(popup(f.p, P.porPosto[f.cnpj],
+        f.p.geo === "quadra" ? `<br><span style="color:var(--apagado)">posicao pela quadra</span>` :
+        f.p.geo === "bairro" ? `<br><span style="color:var(--apagado)">posicao aproximada pelo bairro</span>` : ""));
+    m.on("click", () => focaPosto(f.cnpj, false));
+    MARCADORES[f.cnpj] = m;
+    pts.push([f.p.lat, f.p.lng]);
   }
+
+  /* Antigos: ponto cinza (posicao precisa) ou balao por bairro (posicao
+     aproximada). So quando o usuario pede; por padrao o mapa e da semana. */
+  let nAntigos = 0, nBaloes = 0;
+  if(S.antigas){
+    const porBairro = {};
+    for(const cnpj in P.porPosto){
+      const p = H.postos[cnpj] || {}, u = P.porPosto[cnpj];
+      if(p.lat == null || frescos.some(f => f.cnpj === cnpj)) continue;
+      nAntigos++;
+      const dU = ["c","a"].map(k => u[k] && u[k].data).filter(Boolean).sort().pop();
+      if(p.geo === "bairro"){
+        (porBairro[p.bairro || "?"] = porBairro[p.bairro || "?"] || {lat:p.lat, lng:p.lng, itens:[]})
+          .itens.push({cnpj, p, u, dU});
+        continue;
+      }
+      const icone = L.divIcon({className:"", iconSize:[10,10], iconAnchor:[5,5],
+        html:`<div class="pontinho"></div>`});
+      const m = L.marker([p.lat, p.lng], {icon: icone, zIndexOffset: 0}).addTo(CAMADA)
+        .bindPopup(popup(p, u, `<br><span style="color:var(--apagado)">fora da amostra da semana; ultima leitura ${dU ? dataBr(dU) : "?"}</span>` +
+          (p.geo === "quadra" ? `<br><span style="color:var(--apagado)">posicao pela quadra</span>` : "")));
+      m.on("click", () => focaPosto(cnpj, false));
+      MARCADORES[cnpj] = m;
+    }
+    for(const b in porBairro){
+      const g = porBairro[b];
+      nBaloes++;
+      const icone = L.divIcon({className:"", iconSize:null, iconAnchor:[40,11],
+        html:`<div class="bolha">${b} &middot; ${g.itens.length} sem endereco preciso</div>`});
+      const lista = g.itens.sort((x,y) => (y.dU || "") > (x.dU || "") ? 1 : -1).map(i =>
+        `<div style="margin-top:6px"><b>${i.p.nome || "sem nome na ANP"}</b><br>` +
+        `<span style="color:var(--apagado)">${i.p.endereco || ""}</span>` +
+        linhaProd("Comum", i.u.c, "var(--led)") + linhaProd("Aditivada", i.u.a, "var(--ambar)") + `</div>`).join("");
+      const m = L.marker([g.lat, g.lng], {icon: icone, zIndexOffset: -100}).addTo(CAMADA)
+        .bindPopup(`<b>${b}</b>: ${g.itens.length} postos fora da amostra da semana, sem CEP nem quadra ` +
+          `reconhecida na base da ANP; posicao so pelo bairro.${lista}`, {maxHeight: 260});
+      g.itens.forEach(i => MARCADORES[i.cnpj] = m);
+    }
+  }
+
+  if(PONTO) PONTO.addTo(CAMADA);
+
   if(pts.length && !MAPA._ajustado){
-    MAPA.fitBounds(pts, {padding:[36,36]});
+    MAPA.fitBounds(pts, {padding:[36,36], maxZoom: 14});
     MAPA._ajustado = true;
   }
   el("notamapa").innerHTML =
-    `${plotados} postos no mapa com a ${chave === "c" ? "gasolina comum" : "aditivada"}. ` +
-    `Coordenadas pelo CEP do posto; ${aprox} sem CEP na base da ANP estao no centro ` +
-    `do proprio bairro, com borda tracejada. O pino com aro verde e o menor preco vigente.`;
+    `${frescos.length} postos com ${rotProd} na semana vigente` +
+    (frescos.length ? `, de ${real(lo)} a ${real(hi)}` : ``) + `; o aro verde e o menor preco. ` +
+    (S.antigas
+      ? `Mais ${nAntigos} postos fora da amostra da semana em cinza` +
+        (nBaloes ? `, dos quais os sem endereco preciso estao em ${nBaloes} ${nBaloes === 1 ? "balao" : "baloes"} por bairro` : ``) + `.`
+      : `Marque "mostrar postos sem leitura na semana" para ver os outros ${Object.keys(P.porPosto).length - frescos.length} postos ja pesquisados.`);
+}
+
+function focaPosto(cnpj, vindoDaTabela){
+  S.foco = cnpj;
+  el("corpotabela").querySelectorAll("tr[data-cnpj]").forEach(tr =>
+    tr.classList.toggle("destaque", tr.dataset.cnpj === cnpj));
+  if(!vindoDaTabela || !MAPA) return;
+  const p = H.postos[cnpj] || {};
+  if(p.lat == null) return;
+  let m = MARCADORES[cnpj];
+  if(!m){
+    /* Posto antigo com o mapa em modo "so semana": liga os antigos para
+       o pino existir. */
+    S.antigas = true; el("chkantigas").checked = true; mapa();
+    m = MARCADORES[cnpj];
+  }
+  el("mapa").scrollIntoView({behavior:"smooth", block:"center"});
+  MAPA.setView([p.lat, p.lng], Math.max(MAPA.getZoom(), 15), {animate:true});
+  if(m) setTimeout(() => m.openPopup(), 350);
+}
+
+function defineponto(latlng){
+  S.ponto = latlng;
+  if(PONTO) PONTO.remove();
+  const icone = L.divIcon({className:"", iconSize:[16,16], iconAnchor:[8,8], html:`<div class="ponto"></div>`});
+  PONTO = L.marker(latlng, {icon: icone, draggable: true, zIndexOffset: 1000})
+    .bindTooltip("ponto de referencia (arraste para mover)", {direction:"top", offset:[0,-8]});
+  PONTO.on("dragend", e => { const ll = e.target.getLatLng(); S.ponto = [ll.lat, ll.lng]; tabela(); });
+  if(CAMADA) PONTO.addTo(CAMADA);
+  el("botlimpa").disabled = false;
+  el("botdist").disabled = false;
+  tabela();
+}
+
+function limpaPonto(){
+  S.ponto = null;
+  if(PONTO){ PONTO.remove(); PONTO = null; }
+  el("botlimpa").disabled = true;
+  el("botdist").disabled = true;
+  if(S.ordem === "d"){ S.ordem = "c"; }
+  troca();
 }
 
 function composicao(){
@@ -492,10 +700,27 @@ function rodape(){
 
 el("botcomum").onclick = () => { S.ordem = "c"; troca(); };
 el("botadit").onclick = () => { S.ordem = "a"; troca(); };
+el("botdist").onclick = () => { if(S.ponto){ S.ordem = "d"; troca(); } };
 el("selbairro").onchange = e => { S.bairro = e.target.value; tabela(); };
+el("busca").oninput = e => { S.busca = e.target.value; tabela(); };
+el("chkvigente").onchange = e => { S.soVigente = e.target.checked; tabela(); };
+el("chkantigas").onchange = e => { S.antigas = e.target.checked; mapa(); };
+el("botlimpa").onclick = limpaPonto;
+el("botgeo").onclick = () => {
+  if(!navigator.geolocation){ alert("Este navegador nao informa a localizacao."); return; }
+  el("botgeo").disabled = true;
+  navigator.geolocation.getCurrentPosition(
+    pos => { el("botgeo").disabled = false;
+             defineponto([pos.coords.latitude, pos.coords.longitude]);
+             if(MAPA) MAPA.setView(S.ponto, 14); },
+    err => { el("botgeo").disabled = false;
+             alert("Nao consegui ler a localizacao (" + err.message + "). Clique no mapa para marcar o ponto."); },
+    {enableHighAccuracy:true, timeout:10000, maximumAge:60000});
+};
 function troca(){
   el("botcomum").classList.toggle("ativo", S.ordem === "c");
   el("botadit").classList.toggle("ativo", S.ordem === "a");
+  el("botdist").classList.toggle("ativo", S.ordem === "d");
   tabela(); mapa();
 }
 

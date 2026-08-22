@@ -158,6 +158,9 @@ def carrega():
     return _funde(locais, publicado)
 
 
+_GEO_NIVEL = {"bairro": 0, "quadra": 1, "cep": 2}
+
+
 def _funde(a, b):
     h = {"postos": {}, "coletas": [], "semanas": [], "semanas_ruins": [],
          "sementes": [], "petrobras": [], "ultima": None}
@@ -169,7 +172,14 @@ def _funde(a, b):
         # dicionario inteiro ja apagou coordenadas uma vez; nunca de novo.
         for cnpj, posto in (fonte.get("postos") or {}).items():
             alvo = h["postos"].setdefault(cnpj, {})
-            alvo.update({k: v for k, v in posto.items() if v is not None})
+            novo = {k: v for k, v in posto.items() if v is not None}
+            # Posicao: fica a mais precisa dos dois lados (cep > quadra >
+            # bairro). Sem isso o publicado, que vem por ultimo, devolvia o
+            # posto ao centroide do bairro logo depois de geocodificado.
+            if _GEO_NIVEL.get(alvo.get("geo"), -1) > _GEO_NIVEL.get(novo.get("geo"), -1):
+                for k in ("lat", "lng", "geo"):
+                    novo.pop(k, None)
+            alvo.update(novo)
         h["semanas"] = sorted(set(h["semanas"]) | set(fonte.get("semanas") or []))
         h["semanas_ruins"] = sorted(set(h["semanas_ruins"])
                                     | set(fonte.get("semanas_ruins") or []))
@@ -370,6 +380,62 @@ def _geo_awesome(cep):
         return float(j["lat"]), float(j["lng"])
     return None
 
+# Padroes de quadra no endereco da ANP. O Nominatim (OSM) nao acha "SQS 212
+# BLOCO A PAG S/N", mas acha "SQS 212, Brasilia": a quadra tem no do OSM, o
+# bloco e o lote nao. Posicao em nivel de quadra ja e ordens de grandeza
+# melhor que o centroide do bairro (Asa Sul tem 5 km de comprimento).
+_QUADRAS = [
+    (r"\b(?:SQS|SHCS|SHC/SUL|SHC/S|SQS-SUPERQUADRA SUL)\b[^0-9]*(\d{3})\b", "SQS {}"),
+    (r"\bCLSW\b[^0-9]*(\d{3})\b", "CLSW {}"),
+    (r"\bSQSW\b[^0-9]*(\d{3})\b", "SQSW {}"),
+    (r"\bQI\s*(\d{1,2})\b", "SHIS QI {}"),
+    (r"\bQE\s*(\d{1,2})\b", "QE {} Guara"),
+    (r"\bSIA\s+TRECHO\s*(\d{1,2})\b", "SIA Trecho {}"),
+    (r"\bSCIA\s+QUADRA\s*(\d{1,2})\b", "SCIA Quadra {}"),
+    (r"\bSHCES\s+QUADRA\s*(\d{3,4})\b", "SHCES Quadra {}"),
+    (r"\bSTRC\b", "STRC"),
+    (r"\bSPM\b|\bSPMS\b|\bSETOR DE POSTOS E MOTEIS\b", "Setor de Postos e Moteis Sul"),
+]
+
+
+def quadra_do_endereco(endereco):
+    e = normaliza(endereco)
+    for rx, fmt in _QUADRAS:
+        m = re.search(rx, e)
+        if m:
+            return fmt.format(*[str(int(g)) if g.isdigit() else g for g in m.groups()])
+    return None
+
+
+def _geo_nominatim(endereco):
+    """Geocodificacao por quadra via Nominatim. Uma chamada por segundo no
+    maximo, com User-Agent identificado, como pede a politica do OSM."""
+    q = quadra_do_endereco(endereco)
+    if not q:
+        return None
+    from urllib.parse import quote
+    url = ("https://nominatim.openstreetmap.org/search?format=json&limit=1"
+           "&countrycodes=br&q=" + quote(q + ", Brasilia, Distrito Federal"))
+    req = Request(url, headers={"User-Agent": "painel-combustivel-df/1.0 "
+                                "(rafaelmcortopassi@gmail.com)"})
+    with urlopen(req, timeout=20) as r:
+        j = json.load(r)
+    time.sleep(1.1)
+    if j and j[0].get("lat"):
+        return float(j[0]["lat"]), float(j[0]["lon"])
+    return None
+
+
+def _perto_do_bairro(p, lat, lng, km=7.0):
+    """Rejeita acerto do Nominatim longe demais do bairro declarado pela ANP
+    (uma "QE 2" pode existir em outra cidade-satelite)."""
+    c = BAIRRO_CENTRO.get(p.get("bairro") or "")
+    if not c:
+        return True
+    dlat = (lat - c[0]) * 111.0
+    dlng = (lng - c[1]) * 111.0 * 0.96
+    return (dlat * dlat + dlng * dlng) ** 0.5 <= km
+
 
 def geocodifica(h, limite=30):
     """Da lat/lng a cada posto, uma vez so (fica gravado no historico).
@@ -379,7 +445,8 @@ def geocodifica(h, limite=30):
     "bairro" que ganhar CEP depois tenta de novo a via precisa."""
     pendentes = [(c, p) for c, p in h["postos"].items()
                  if p.get("lat") is None
-                 or (p.get("geo") == "bairro" and p.get("cep"))]
+                 or (p.get("geo") == "bairro" and p.get("cep"))
+                 or (p.get("geo") == "bairro" and not p.get("qtent"))]
     feitos = 0
     for cnpj, p in pendentes[:limite]:
         lat = lng = None
@@ -395,9 +462,22 @@ def geocodifica(h, limite=30):
                     origem = "cep"
                     break
                 time.sleep(0.3)
+        if lat is None and not p.get("qtent"):
+            # Sem CEP (ou CEP que nao resolveu): tenta a quadra no OSM, uma
+            # vez so por posto; a marca qtent evita bater no Nominatim toda
+            # rodada por um endereco que ele nunca vai achar.
+            p["qtent"] = True
+            try:
+                r = _geo_nominatim(p.get("endereco") or "")
+            except Exception:
+                r = None
+            if (r and DF_LAT[0] <= r[0] <= DF_LAT[1] and DF_LNG[0] <= r[1] <= DF_LNG[1]
+                    and _perto_do_bairro(p, *r)):
+                lat, lng = r
+                origem = "quadra"
         if lat is None:
             if p.get("geo") == "bairro":
-                continue  # ja esta no centroide e o CEP nao destravou
+                continue  # ja esta no centroide e nem CEP nem quadra destravaram
             c = BAIRRO_CENTRO.get(p.get("bairro") or "")
             if not c:
                 continue

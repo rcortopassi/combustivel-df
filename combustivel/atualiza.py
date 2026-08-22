@@ -49,12 +49,16 @@ def main():
         return p.returncode
 
     novas = sorted(semanas_depois - semanas_antes)
-    petro_novo = {d: v for d, v in petro_depois.items() if petro_antes.get(d) != v}
+    # Compara o valor mais recente, nao a chave de data: uma leitura nova de hoje
+    # com o mesmo valor de ontem nao e mudanca de parcela.
+    antes = petro_antes[sorted(petro_antes)[-1]] if petro_antes else None
+    depois_d = sorted(petro_depois)[-1] if petro_depois else None
+    depois = petro_depois[depois_d] if depois_d else None
     if novas:
         print(f"ALERTA: semana nova da ANP no painel ({', '.join(novas)}).")
-    elif petro_novo and petro_antes:
-        d, v = sorted(petro_novo.items())[-1]
-        print(f"ALERTA: parcela Petrobras mudou para R$ {v:.2f} em {d}.")
+    elif antes is not None and depois is not None and depois != antes:
+        print(f"ALERTA: parcela Petrobras mudou de R$ {antes:.2f} para "
+              f"R$ {depois:.2f} em {depois_d}.")
     else:
         print("SEM ALERTA: nada novo alem da conferencia de rotina.")
     return 0
